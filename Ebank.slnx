@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Ebank.Api/Ebank.Api.csproj" />
+    <Project Path="src/Ebank.Mcp/Ebank.Mcp.csproj" />
   </Folder>
 </Solution>

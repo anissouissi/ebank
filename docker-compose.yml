@@ -24,6 +24,7 @@ services:
       KC_DB_USERNAME: ${KEYCLOAK_DB_USER:?Set KEYCLOAK_DB_USER in .env}
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in .env}
       KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: http://localhost:8080
     ports:
       - "8080:8080"
     volumes:
@@ -31,6 +32,52 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_KEEP_ALIVE: 5m
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
+  ollama-model-init:
+    image: ollama/ollama:latest
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama"]
+    command: ["pull", "${OLLAMA_MODEL:-qwen3:4b}"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: "no"
+
+  mcp:
+    build:
+      context: .
+      dockerfile: src/Ebank.Mcp/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      Keycloak__Authority: http://keycloak:8080/realms/ebank
+      Keycloak__Issuer: http://localhost:8080/realms/ebank
+      Keycloak__BackchannelAuthority: http://keycloak:8080/realms/ebank
+      Keycloak__Audience: ebank-mcp
+      Keycloak__RequireHttpsMetadata: "false"
+      EbankApi__BaseUrl: http://host.docker.internal:5100
+    ports:
+      - "127.0.0.1:7101:8080"
+    depends_on:
+      keycloak:
+        condition: service_started
 
   ebank-db:
     image: postgres:16-alpine
@@ -51,3 +98,4 @@ services:
 volumes:
   keycloak-db:
   ebank-db:
+  ollama-models:

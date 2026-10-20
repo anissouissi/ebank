@@ -54,6 +54,11 @@ type OverviewSummary = {
   recentTransactions: CustomerTransaction[]
 }
 
+type AssistantMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 const TODAY_LABEL = new Intl.DateTimeFormat('en-US', {
   weekday: 'long',
   month: 'long',
@@ -97,6 +102,12 @@ function App() {
   const [demoSubmitting, setDemoSubmitting] = useState(false)
   const [demoError, setDemoError] = useState<string | null>(null)
   const [demoSuccess, setDemoSuccess] = useState<string | null>(null)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([])
+  const [assistantInput, setAssistantInput] = useState('')
+  const [assistantSending, setAssistantSending] = useState(false)
+  const [assistantError, setAssistantError] = useState<string | null>(null)
+  const [assistantNeedsLogin, setAssistantNeedsLogin] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
@@ -292,6 +303,10 @@ function App() {
   }
 
   const signOut = () => {
+    setAssistantMessages([])
+    setAssistantInput('')
+    setAssistantError(null)
+    setAssistantNeedsLogin(false)
     keycloak.logout({ redirectUri: window.location.origin }).catch((error: unknown) => {
       setAuthError(error instanceof Error ? error.message : 'Could not sign out.')
     })
@@ -380,6 +395,132 @@ function App() {
     }
   }
 
+      const sendAssistantMessage = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault()
+        const content = assistantInput.trim()
+        if (!content || assistantSending) return
+
+        if (!authenticated || !keycloak.authenticated) {
+          setAssistantNeedsLogin(true)
+          setAssistantError(null)
+          return
+        }
+
+        setAssistantSending(true)
+        setAssistantError(null)
+        setAssistantNeedsLogin(false)
+        const nextMessages = [...assistantMessages, { role: 'user' as const, content }]
+        setAssistantMessages(nextMessages)
+        setAssistantInput('')
+
+        try {
+          await keycloak.updateToken(30)
+          if (!keycloak.authenticated || !keycloak.token) {
+            setAssistantNeedsLogin(true)
+            setAssistantError('Your session has expired. Sign in again to use the assistant.')
+            return
+          }
+
+          const response = await fetch('/api/assistant/chat', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${keycloak.token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ messages: nextMessages.slice(-12) }),
+          })
+          if (response.status === 401) {
+            setAssistantNeedsLogin(true)
+            throw new Error('Your session has expired. Sign in again to use the assistant.')
+          }
+          if (!response.ok) {
+            throw new Error(response.status === 503
+              ? 'The assistant is temporarily unavailable. Please try again.'
+              : `The assistant could not answer (HTTP ${response.status}).`)
+          }
+
+          const result = await response.json() as { reply: string }
+          setAssistantMessages((current) => [...current, {
+            role: 'assistant',
+            content: result.reply,
+          }])
+        } catch (error) {
+          setAssistantError(error instanceof Error ? error.message : 'Could not contact the assistant.')
+        } finally {
+          setAssistantSending(false)
+        }
+      }
+
+      const assistantPanel = assistantOpen ? (
+        <aside id="assistant-chat" className="assistant-chat-panel" aria-label="Ebank assistant">
+          <div className="assistant-chat-header">
+            <div>
+              <span className="assistant-chat-symbol" aria-hidden="true">✳</span>
+              <span>
+                <strong>Ebank assistant</strong>
+                <small>Read-only account help</small>
+              </span>
+            </div>
+            <button type="button" className="assistant-close"
+              aria-label="Close assistant" onClick={() => setAssistantOpen(false)}>×</button>
+          </div>
+          <div className="assistant-chat-body" aria-live="polite">
+            <div className="assistant-safety-note">
+              Demo data only. The assistant can read your accounts and transactions; it cannot move money.
+            </div>
+            {(!authenticated || assistantNeedsLogin) ? (
+              <div className="assistant-login-prompt">
+                <h2>Sign in to get started</h2>
+                <p>Sign in securely before asking about your accounts or transactions.</p>
+                <button className="button button-primary" type="button" onClick={signIn}>
+                  Sign in securely <span aria-hidden="true">→</span>
+                </button>
+              </div>
+            ) : assistantMessages.length === 0 ? (
+              <div className="assistant-welcome">
+                <p>What would you like to know?</p>
+                <ul>
+                  <li>List my accounts</li>
+                  <li>Show my five most recent transactions</li>
+                  <li>Show transactions from 2026-09-01 to 2026-09-30</li>
+                </ul>
+              </div>
+            ) : (
+              <div className="assistant-chat-messages">
+                {assistantMessages.map((message, index) => (
+                  <div className={`assistant-chat-message ${message.role}`} key={`${message.role}-${index}`}>
+                    <span>{message.role === 'user' ? 'You' : 'Ebank assistant'}</span>
+                    <p>{message.content}</p>
+                  </div>
+                ))}
+                {assistantSending && <p className="assistant-thinking">Checking your account data...</p>}
+              </div>
+            )}
+            {assistantError && <p className="assistant-chat-error" role="alert">{assistantError}</p>}
+          </div>
+          {authenticated && !assistantNeedsLogin && (
+            <form className="assistant-chat-form" onSubmit={(event) => void sendAssistantMessage(event)}>
+              <label className="visually-hidden" htmlFor="assistant-message">Ask the Ebank assistant</label>
+              <textarea id="assistant-message" value={assistantInput} maxLength={2_000}
+                placeholder="Ask about your accounts..." rows={2}
+                onChange={(event) => setAssistantInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }} />
+              <button className="assistant-send" type="submit"
+                disabled={assistantSending || !assistantInput.trim()}
+                aria-label="Send message">
+                {assistantSending ? '…' : '↑'}
+              </button>
+              <small>Your Keycloak session is verified before each request.</small>
+            </form>
+          )}
+        </aside>
+      ) : null
+
   if (!ready) {
     return (
       <main className="loading-screen">
@@ -391,6 +532,7 @@ function App() {
 
   if (!authenticated) {
     return (
+      <>
       <main className="welcome-screen">
         <section className="welcome-card">
           <a className="brand" href="/" aria-label="Ebank home">
@@ -422,6 +564,11 @@ function App() {
           <div className="art-caption">A little more clarity.<br />A lot more confidence.</div>
         </aside>
       </main>
+      <button type="button" className="assistant-launcher" onClick={() => setAssistantOpen(true)}>
+        <span aria-hidden="true">✳</span> Ask Ebank assistant
+      </button>
+      {assistantPanel}
+      </>
     )
   }
 
@@ -470,6 +617,11 @@ function App() {
         <header className="topbar">
           <div className="breadcrumb">My banking <span>/</span> {page === 'profile' ? 'Profile' : page === 'accounts' ? 'Accounts' : page === 'transactions' ? 'Transactions' : page === 'demo' ? 'Demo' : 'Overview'}</div>
           <div className="topbar-right">
+            <button type="button" className="assistant-topbar-button"
+              onClick={() => setAssistantOpen((open) => !open)}
+              aria-expanded={assistantOpen} aria-controls="assistant-chat">
+              <span aria-hidden="true">✳</span> Ask assistant
+            </button>
             <div className="account-menu" ref={accountMenuRef}>
               <button
                 className="profile-avatar-button"
@@ -932,6 +1084,11 @@ function App() {
           )}
         </div>
       </section>
+      <button type="button" className="assistant-launcher dashboard-assistant-launcher"
+        onClick={() => setAssistantOpen(true)}>
+        <span aria-hidden="true">✳</span> Ask Ebank assistant
+      </button>
+      {assistantPanel}
     </main>
   )
 }

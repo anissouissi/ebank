@@ -1,6 +1,31 @@
 @Ebank.Api_HostAddress = http://localhost:5100
 @accessToken = replace-with-a-Keycloak-access-token
 
+### Ask the authenticated assistant to list this customer's accounts
+POST {{Ebank.Api_HostAddress}}/api/assistant/chat
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "List my accounts."
+    }
+  ]
+}
+
+### Invalid assistant request (must return 400)
+POST {{Ebank.Api_HostAddress}}/api/assistant/chat
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "messages": []
+}
+
+###
+
 ### Public API health check
 GET {{Ebank.Api_HostAddress}}/api/health
 Accept: application/json

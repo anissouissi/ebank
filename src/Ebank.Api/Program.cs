@@ -4,6 +4,9 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
+using ModelContextProtocol.Client;
 using Ebank.Api.Data;
 using Ebank.Api.Endpoints;
 using Ebank.Api.Services;
@@ -31,6 +34,16 @@ builder.Services.AddScoped<IKycService, KycService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
+builder.Services.AddScoped<IAssistantService, AssistantService>();
+var ollamaEndpoint = builder.Configuration["Assistant:OllamaEndpoint"]
+    ?? throw new InvalidOperationException("Assistant:OllamaEndpoint must be configured.");
+var ollamaModel = builder.Configuration["Assistant:OllamaModel"]
+    ?? throw new InvalidOperationException("Assistant:OllamaModel must be configured.");
+builder.Services.AddSingleton<IChatClient>(_ =>
+    new OllamaApiClient(new Uri(ollamaEndpoint), ollamaModel));
+builder.Services.AddSingleton(new AssistantMcpOptions(
+    new Uri(builder.Configuration["Assistant:McpEndpoint"]
+        ?? throw new InvalidOperationException("Assistant:McpEndpoint must be configured."))));
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy => policy
@@ -127,5 +140,6 @@ app.MapKycEndpoints();
 app.MapAccountEndpoints();
 app.MapTransactionEndpoints();
 app.MapOverviewEndpoints();
+app.MapAssistantEndpoints();
 
 app.Run();

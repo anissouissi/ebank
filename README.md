@@ -4,8 +4,8 @@ Ebank is a virtual-banking application foundation: React + TypeScript for the
 web client, ASP.NET Core for APIs, and Keycloak for customer identity.
 
 > The dashboard is a UI demo. Its balances and transactions are illustrative,
-> not connected to a banking system. The AI assistant and real financial
-> operations are not implemented.
+> not connected to a banking system. The AI assistant is read-only and real
+> financial operations are not implemented.
 
 ## Local development
 
@@ -26,7 +26,9 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
 
    PostgreSQL stores Keycloak's realm and identity data in the persistent
    `keycloak-db` Docker volume. Keycloak imports the `ebank` realm and
-   `ebank-web` public client on first start. Self-registration is enabled:
+   `ebank-web` public client on first start. The Compose stack also starts
+   Ollama, downloads the configured model on first run, and starts the
+   authenticated MCP service. Self-registration is enabled:
    open <http://localhost:5173> and choose **Create an account** to use
    Keycloak's hosted registration page, then sign in with the new credentials.
    The admin console is at
@@ -35,15 +37,21 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    demo account records in its own `ebank` database and persistent `ebank-db`
    volume, exposed to the host on port 5433.
 
-   Realm import happens only when the realm does not already exist. If you
-   started Keycloak before enabling registration or adding the API audience,
+   The model download can take several minutes the first time. Check its
+   progress with `docker compose logs -f ollama-model-init`. To select another
+   Ollama model, set `OLLAMA_MODEL` in `.env` before starting Compose. Realm
+   import happens only when the realm does not already exist. If you started
+   Keycloak before enabling registration or adding the API/MCP audiences,
    update that existing realm in the admin console: enable **Realm settings →
    Login → User registration**, and ensure the `ebank-api` bearer-only client
-   exists. Then open **Clients → ebank-web → Client scopes →
-   ebank-web-dedicated → Add mapper → By configuration → Audience**. Set
-   **Included Client Audience** to `ebank-api` and enable **Add to access
-   token**. Do not remove the database volume to apply these settings unless
-   you intend to erase all local Keycloak users and data.
+   and `ebank-mcp` bearer-only clients exist. Under **Clients → ebank-web →
+   Client scopes → ebank-web-dedicated**, add audience mappers for both
+   `ebank-api` and `ebank-mcp`, with **Add to access token** enabled. Sign out
+   and sign in again after changing these settings. Do not remove the database
+   volume to apply settings unless you intend to erase all local Keycloak users
+   and data. The MCP container uses Keycloak's internal Compose address for
+   signing-key retrieval while continuing to validate the browser-facing
+   `http://localhost:8080/realms/ebank` token issuer.
 
 2. Configure the API's local secrets once, apply the database migration, and
    start the API:
@@ -56,9 +64,14 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    dotnet user-secrets set "ConnectionStrings:Ebank" "Host=localhost;Port=5433;Database=ebank;Username=$EBANK_DB_USER;Password=$EBANK_DB_PASSWORD" --project src/Ebank.Api
    dotnet tool restore
    dotnet ef database update --project src/Ebank.Api
-   dotnet run --project src/Ebank.Api --urls http://localhost:5100
+   Assistant__OllamaModel="${OLLAMA_MODEL:-qwen3:4b}" dotnet run \
+     --project src/Ebank.Api --urls http://0.0.0.0:5100
    ```
 
+   The local MCP container calls the host-run API through
+   `host.docker.internal:5100`; binding to `0.0.0.0` allows that connection.
+   This exposes the development API on your machine's network interfaces, so
+   use only on a trusted local network and stop it when not developing.
    `dotnet user-secrets` stores these values outside the repository and makes
    them available to both `dotnet run` and IDE launches. If you already started
    the API, stop and restart it after setting the secrets. Keep the encryption
@@ -109,7 +122,7 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    npm run dev
    ```
 
-   Open <http://localhost:5173> to create an account or sign in. Open
+   Open <http://localhost:5173> to create an account or sign in.
    The Overview page reads account and transaction summaries from PostgreSQL.
    **Accounts** in the sidebar lists or creates current and savings demo
    accounts. **Transactions** shows history and filters by account, date range,
@@ -119,6 +132,23 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    Vite proxies `/api` requests to the local ASP.NET Core API on port 5100.
    After pulling or building API changes, stop any previously running API
    process and restart it so the running process loads the new routes.
+
+   The **Ask Ebank assistant** panel is available from the signed-out welcome
+   page and dashboard. It requires an authenticated Keycloak session before
+   sending a message; the browser refreshes the access token and sends it only
+   to the protected `/api/assistant/chat` endpoint. The API validates the
+   session and passes the token to the separately hosted MCP service, which
+   validates it again and forwards it to the existing customer-scoped APIs.
+   The token is never included in prompts, tool arguments, conversation
+   history, or requests to Ollama. The assistant uses the configured
+   `qwen3:4b` model by default and provides five read-only tools:
+   `list_accounts`, `get_recent_transactions`,
+   `get_transactions_in_date_range`, `get_account_recent_transactions`, and
+   `get_account_transactions_in_date_range`. Date-range tool dates are UTC
+   calendar dates, inclusive at both ends. Range results are capped at 1,000
+   entries; the assistant reports when this safety cap truncates a result.
+   The local MCP host port is bound to `127.0.0.1:7101`; the assistant API
+   reaches Ollama at `localhost:11434` and MCP at `localhost:7101`.
 
 ## Configuration
 
@@ -130,7 +160,7 @@ enabled. The React client supports `VITE_KEYCLOAK_URL`,
 `VITE_KEYCLOAK_REALM`, and `VITE_KEYCLOAK_CLIENT_ID` overrides.
 
 The browser uses OIDC Authorization Code with PKCE; it has no client secret.
-The API independently validates bearer tokens and protects `/api/me`.
+The API independently validates bearer tokens and protects customer data.
 Development Keycloak uses `start-dev` and HTTP: do not use this setup or its
 realm settings as a production deployment.
 
@@ -159,8 +189,5 @@ handling real customer data.
 1. Add phone verification and a staff-only KYC review/approval workflow.
 2. Replace demo account and transaction records with a ledger only after the
    necessary banking controls and regulatory requirements are defined.
-3. Add an AI coordinator in .NET with narrowly scoped read-only tools, explicit
-   customer authorization, PII minimization, audit logging, and model-provider
-   configuration.
-4. Add tests, observability, and threat-model-driven evaluation before
+3. Add tests, observability, and threat-model-driven evaluation before
    considering any customer-confirmed write actions.
