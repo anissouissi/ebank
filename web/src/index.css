@@ -1,0 +1,40 @@
+:root {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  color: #26372d;
+  background: #f8f8f5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --green: #204b37;
+  --ink: #26372d;
+  --ink-soft: #778078;
+  --ink-muted: #929a92;
+  --border: #e8e9e2;
+  --serif: 'Newsreader', Georgia, serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  font-family: inherit;
+}
+
+::selection {
+  background: #d9eadb;
+  color: #173d2c;
+}

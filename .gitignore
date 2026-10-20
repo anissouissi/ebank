@@ -1,0 +1,8 @@
+.env
+.env.*
+!.env.example
+**/bin/
+**/obj/
+web/node_modules/
+web/dist/
+.DS_Store

@@ -1,0 +1,66 @@
+@baseUrl = http://localhost:5100
+@accessToken = paste-a-Keycloak-access-token-here
+@accountId = replace-with-account-id
+@destinationAccountId = replace-with-another-account-id
+
+### List recent transactions across the signed-in customer's accounts
+GET {{baseUrl}}/api/transactions?page=1&pageSize=25
+Authorization: Bearer {{accessToken}}
+
+### Filter by account, time range, and transaction label
+GET {{baseUrl}}/api/transactions?accountId={{accountId}}&from=2026-10-01T00:00:00%2B04:00&to=2026-11-01T00:00:00%2B04:00&search=groceries&page=1&pageSize=25
+Authorization: Bearer {{accessToken}}
+
+### Invalid date range returns a validation problem
+GET {{baseUrl}}/api/transactions?from=2026-11-01T00:00:00Z&to=2026-10-01T00:00:00Z
+Authorization: Bearer {{accessToken}}
+
+### Create demo e-commerce spending
+POST {{baseUrl}}/api/transactions/demo
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "accountId": "{{accountId}}",
+  "type": "EcommercePurchase",
+  "amount": 24.95,
+  "label": "Demo online shopping"
+}
+
+### Create a demo salary credit
+POST {{baseUrl}}/api/transactions/demo
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "accountId": "{{accountId}}",
+  "type": "SalaryReceived",
+  "amount": 2500.00
+}
+
+### Create a demo transfer between two owned accounts
+POST {{baseUrl}}/api/transactions/demo
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "accountId": "{{accountId}}",
+  "destinationAccountId": "{{destinationAccountId}}",
+  "type": "MoneyTransfer",
+  "amount": 125.00
+}
+
+### Demo debits with insufficient funds return 409
+POST {{baseUrl}}/api/transactions/demo
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "accountId": "{{accountId}}",
+  "type": "AtmWithdrawal",
+  "amount": 1000000.00
+}
+
+### Get a transaction by ID (use the ID returned by a successful POST)
+GET {{baseUrl}}/api/transactions/replace-with-transaction-id
+Authorization: Bearer {{accessToken}}

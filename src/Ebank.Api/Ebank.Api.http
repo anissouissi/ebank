@@ -1,0 +1,53 @@
+@Ebank.Api_HostAddress = http://localhost:5100
+@accessToken = replace-with-a-Keycloak-access-token
+
+### Public API health check
+GET {{Ebank.Api_HostAddress}}/api/health
+Accept: application/json
+
+###
+
+### Get this customer's KYC details and document statuses
+GET {{Ebank.Api_HostAddress}}/api/kyc/
+Authorization: Bearer {{accessToken}}
+Accept: application/json
+
+### Update this customer's contact and address details
+PUT {{Ebank.Api_HostAddress}}/api/kyc/profile
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "firstName": "Alex",
+  "lastName": "Customer",
+  "phoneNumber": "+12025550123",
+  "addressLine1": "10 Example Street",
+  "addressLine2": "",
+  "city": "Example City",
+  "postalCode": "10001",
+  "country": "US"
+}
+
+### Upload identity document (PDF/PNG/JPEG, maximum 5 MB)
+PUT {{Ebank.Api_HostAddress}}/api/kyc/documents/identity
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=EbankBoundary
+
+--EbankBoundary
+Content-Disposition: form-data; name="file"; filename="identity.pdf"
+Content-Type: application/pdf
+
+< ./documents/identity.pdf
+--EbankBoundary--
+
+### Upload proof of address (PDF/PNG/JPEG, maximum 5 MB)
+PUT {{Ebank.Api_HostAddress}}/api/kyc/documents/address-proof
+Authorization: Bearer {{accessToken}}
+Content-Type: multipart/form-data; boundary=EbankBoundary
+
+--EbankBoundary
+Content-Disposition: form-data; name="file"; filename="address-proof.pdf"
+Content-Type: application/pdf
+
+< ./documents/address-proof.pdf
+--EbankBoundary--

@@ -1,0 +1,166 @@
+# Ebank
+
+Ebank is a virtual-banking application foundation: React + TypeScript for the
+web client, ASP.NET Core for APIs, and Keycloak for customer identity.
+
+> The dashboard is a UI demo. Its balances and transactions are illustrative,
+> not connected to a banking system. The AI assistant and real financial
+> operations are not implemented.
+
+## Local development
+
+Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
+
+1. Set local Keycloak admin and database credentials, generate a stable
+   encryption key for KYC documents, and start PostgreSQL and Keycloak:
+
+   ```sh
+   cp -n .env.example .env
+   # Replace all sample passwords with long local-only passwords.
+   # Generate a document key with: openssl rand -base64 32
+   # Save that output as KYC_DOCUMENT_ENCRYPTION_KEY in .env. Keep it safe.
+   # If .env already exists, preserve it and add any missing settings from
+   # .env.example rather than replacing it.
+   docker compose up -d
+   ```
+
+   PostgreSQL stores Keycloak's realm and identity data in the persistent
+   `keycloak-db` Docker volume. Keycloak imports the `ebank` realm and
+   `ebank-web` public client on first start. Self-registration is enabled:
+   open <http://localhost:5173> and choose **Create an account** to use
+   Keycloak's hosted registration page, then sign in with the new credentials.
+   The admin console is at
+   <http://localhost:8080>.
+   The separate `ebank-db` service stores customer KYC profile, document, and
+   demo account records in its own `ebank` database and persistent `ebank-db`
+   volume, exposed to the host on port 5433.
+
+   Realm import happens only when the realm does not already exist. If you
+   started Keycloak before enabling registration or adding the API audience,
+   update that existing realm in the admin console: enable **Realm settings →
+   Login → User registration**, and ensure the `ebank-api` bearer-only client
+   exists. Then open **Clients → ebank-web → Client scopes →
+   ebank-web-dedicated → Add mapper → By configuration → Audience**. Set
+   **Included Client Audience** to `ebank-api` and enable **Add to access
+   token**. Do not remove the database volume to apply these settings unless
+   you intend to erase all local Keycloak users and data.
+
+2. Configure the API's local secrets once, apply the database migration, and
+   start the API:
+
+   ```sh
+   set -a
+   . ./.env
+   set +a
+   dotnet user-secrets set "Kyc:DocumentEncryptionKey" "$KYC_DOCUMENT_ENCRYPTION_KEY" --project src/Ebank.Api
+   dotnet user-secrets set "ConnectionStrings:Ebank" "Host=localhost;Port=5433;Database=ebank;Username=$EBANK_DB_USER;Password=$EBANK_DB_PASSWORD" --project src/Ebank.Api
+   dotnet tool restore
+   dotnet ef database update --project src/Ebank.Api
+   dotnet run --project src/Ebank.Api --urls http://localhost:5100
+   ```
+
+   `dotnet user-secrets` stores these values outside the repository and makes
+   them available to both `dotnet run` and IDE launches. If you already started
+   the API, stop and restart it after setting the secrets. Keep the encryption
+   key stable across restarts and backups; changing or losing it makes
+   already-uploaded documents unreadable. Treat it as a secret and do not
+   commit it. `GET /api/health` is public; `/api/me` and all `/api/kyc`
+   endpoints require a Keycloak access token.
+   The API preserves JWT claim names so it can scope KYC records to Keycloak's
+   `sub` claim. Restart the API after changing authentication configuration.
+   The token must contain `ebank-api` in its `aud` claim; after changing the
+   Keycloak audience/client configuration, sign out and sign in again so the
+   browser obtains a new access token. The authenticated `/api/accounts`
+   endpoints list, create, and retrieve the current customer's demo accounts.
+   Account creation returns a zero-balance USD demo record and never creates a
+   real bank account or enables payments. `/api/transactions` returns
+   customer-scoped transaction history with optional account, date/time,
+   search, and pagination filters. Date ranges use an inclusive `from` and
+   exclusive `to` timestamp. `POST /api/transactions/demo` records clearly
+   illustrative e-commerce spending, ATM withdrawals, salary, or transfers.
+   These entries update demo balances; transfers create paired entries and
+   debits are rejected if funds are insufficient. `/api/overview` aggregates
+   the signed-in customer's account balances, current-UTC-month income and
+   spending, and latest recorded transactions from PostgreSQL. Apply schema
+   changes with `dotnet ef database update --project src/Ebank.Api`.
+
+   In the supplied local database, account
+   `a94ebf7b-3239-4c16-a0cc-5f43360c17a1` is the current account and
+   `2ac18289-65f3-47be-980d-e9bd7c363e8d` is the savings account. To populate
+   the current account with 206 transactions and the savings account with 117
+   transactions across the prior 90 days, first apply the database migrations,
+   then run the idempotent seed script. It updates each account balance by the
+   net value of newly inserted activity. Run the
+   command from the repository root; `docker compose exec -T ebank-db` runs
+   `psql` inside the database container, and the script is streamed through
+   standard input:
+
+   ```sh
+   docker compose exec -T ebank-db sh -c \
+     'PGPASSWORD="$POSTGRES_PASSWORD" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+     < src/Ebank.Api/SeedData/demo-transactions.sql
+   ```
+
+3. Start the React client in another terminal:
+
+   ```sh
+   cd web
+   npm install
+   npm run dev
+   ```
+
+   Open <http://localhost:5173> to create an account or sign in. Open
+   The Overview page reads account and transaction summaries from PostgreSQL.
+   **Accounts** in the sidebar lists or creates current and savings demo
+   accounts. **Transactions** shows history and filters by account, date range,
+   or transaction name/label. **Demo** creates sample transaction activity
+   against your own accounts. Use **Profile** in the avatar menu to save
+   contact/address details and upload an identity document plus a recent bill.
+   Vite proxies `/api` requests to the local ASP.NET Core API on port 5100.
+   After pulling or building API changes, stop any previously running API
+   process and restart it so the running process loads the new routes.
+
+## Configuration
+
+The development API reads Keycloak's local issuer from
+`src/Ebank.Api/appsettings.Development.json`. Production deployments must
+provide an HTTPS `Keycloak:Authority`, the expected `Keycloak:Audience`, an
+explicit `Cors:AllowedOrigins` list, and keep `Keycloak:RequireHttpsMetadata`
+enabled. The React client supports `VITE_KEYCLOAK_URL`,
+`VITE_KEYCLOAK_REALM`, and `VITE_KEYCLOAK_CLIENT_ID` overrides.
+
+The browser uses OIDC Authorization Code with PKCE; it has no client secret.
+The API independently validates bearer tokens and protects `/api/me`.
+Development Keycloak uses `start-dev` and HTTP: do not use this setup or its
+realm settings as a production deployment.
+
+Self-registration creates a Keycloak identity only. The application supports
+illustrative demo account and transaction records, but does not create real
+bank accounts, maintain a production ledger, or process payments. Demo
+transactions are not real banking or payment operations. The application also
+does not complete KYC/identity verification. Those banking and regulatory
+onboarding flows still need to be implemented before this can be used as a
+banking product.
+
+Uploaded PDF/PNG/JPEG documents are limited to 5 MB, checked against their file
+signature, encrypted by the API with AES-256-GCM, and stored as ciphertext in
+PostgreSQL. The API records the authenticated Keycloak subject as the owner and
+returns only document metadata, never file contents. A submission with details
+and both documents is marked `PendingReview`; no OCR, bill matching, identity
+verification, phone OTP verification, staff review UI, or approval workflow is
+implemented. The customer profile fields themselves are stored in the Ebank
+database and are not application-level encrypted. Use appropriately encrypted
+database storage, secure backups, TLS, access controls, retention/deletion
+policies, malware scanning, and a managed secrets/key-rotation process before
+handling real customer data.
+
+## Next implementation steps
+
+1. Add phone verification and a staff-only KYC review/approval workflow.
+2. Replace demo account and transaction records with a ledger only after the
+   necessary banking controls and regulatory requirements are defined.
+3. Add an AI coordinator in .NET with narrowly scoped read-only tools, explicit
+   customer authorization, PII minimization, audit logging, and model-provider
+   configuration.
+4. Add tests, observability, and threat-model-driven evaluation before
+   considering any customer-confirmed write actions.

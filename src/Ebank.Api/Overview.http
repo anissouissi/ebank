@@ -1,0 +1,6 @@
+@baseUrl = http://localhost:5100
+@accessToken = paste-a-Keycloak-access-token-here
+
+### Get the signed-in customer's database-backed overview
+GET {{baseUrl}}/api/overview
+Authorization: Bearer {{accessToken}}

@@ -1,0 +1,33 @@
+@baseUrl = http://localhost:5100
+@accessToken = paste-a-Keycloak-access-token-here
+@accountId = replace-with-account-id-from-create-response
+
+### List accounts for the signed-in customer
+GET {{baseUrl}}/api/accounts
+Authorization: Bearer {{accessToken}}
+
+### Open a current account
+POST {{baseUrl}}/api/accounts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "type": "Current"
+}
+
+### Open a savings account
+POST {{baseUrl}}/api/accounts
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+  "type": "Savings"
+}
+
+### Get one of the signed-in customer's accounts
+GET {{baseUrl}}/api/accounts/{{accountId}}
+Authorization: Bearer {{accessToken}}
+
+### An account not owned by the signed-in customer returns 404
+GET {{baseUrl}}/api/accounts/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{accessToken}}
