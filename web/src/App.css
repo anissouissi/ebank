@@ -574,14 +574,13 @@
 }
 
 .assistant-chat-symbol {
-  display: grid;
   width: 35px;
   height: 35px;
-  place-items: center;
+  flex: 0 0 35px;
   border-radius: 11px;
   background: #eaf3ec;
   color: #2c6544;
-  font-size: 19px;
+  box-shadow: none;
 }
 
 .assistant-chat-header strong,
@@ -710,20 +709,9 @@
   font-weight: 650;
 }
 
-.assistant-debug-event {
-  margin-top: 8px;
-}
-
-.assistant-debug-event > span {
-  color: #68766b;
-  font-size: 9px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.assistant-debug-event pre {
+.assistant-debug-log {
   max-height: 220px;
-  margin: 4px 0 0;
+  margin: 8px 0 0;
   padding: 8px;
   overflow: auto;
   border-radius: 6px;
@@ -2427,7 +2415,7 @@ html[data-theme='dark'] .kyc-document,
 html[data-theme='dark'] .kyc-review-note,
 html[data-theme='dark'] .assistant-safety-note,
 html[data-theme='dark'] .assistant-chat-message,
-html[data-theme='dark'] .assistant-debug-event pre {
+html[data-theme='dark'] .assistant-debug-log {
   border-color: var(--border);
   background: var(--surface-muted);
   color: #c4cec6;
@@ -2461,7 +2449,6 @@ html[data-theme='dark'] .assistant-welcome ul,
 html[data-theme='dark'] .assistant-login-prompt p,
 html[data-theme='dark'] .assistant-chat-message > span,
 html[data-theme='dark'] .assistant-debug-details,
-html[data-theme='dark'] .assistant-debug-event > span,
 html[data-theme='dark'] .assistant-thinking {
   color: #b3beb5;
 }

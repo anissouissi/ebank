@@ -18,6 +18,8 @@ public sealed class AssistantService(
     private const int MaximumPromptCharacters = 12_000;
     private const int MaximumPromptMessages = 8;
     private const int MaximumAssistantHistoryMessageLength = 1_000;
+    private const int MaximumOutputTokens = 4_096;
+    private const int ContextTokens = 8_192;
     private const string LongAssistantHistorySummary =
         "A previous assistant reply was omitted; retrieve any needed account or transaction details again using the available tools.";
 
@@ -139,6 +141,8 @@ public sealed class AssistantService(
         var toolsListedAt = Stopwatch.GetTimestamp();
         var agent = CreateAgent(tools.Cast<AITool>().ToList());
         var reply = new StringBuilder();
+        long? lastOutputTokenCount = null;
+        var maximumOutputTokens = MaximumOutputTokens;
 
         await foreach (var update in agent.RunStreamingAsync(
                 PreparePromptMessages(messages),
@@ -175,6 +179,19 @@ public sealed class AssistantService(
                             "answer_delta",
                             text.Text);
                         break;
+                    case UsageContent usage:
+                        lastOutputTokenCount = usage.Details.OutputTokenCount;
+                        yield return new AssistantDebugEvent(
+                            update.Role?.ToString() ?? "assistant",
+                            "usage",
+                            SerializeDebugValue(new
+                            {
+                                inputTokens = usage.Details.InputTokenCount,
+                                outputTokens = usage.Details.OutputTokenCount,
+                                reasoningTokens = usage.Details.ReasoningTokenCount,
+                                totalTokens = usage.Details.TotalTokenCount
+                            }));
+                        break;
                     default:
                         yield return new AssistantDebugEvent(
                             update.Role?.ToString() ?? "assistant",
@@ -188,19 +205,27 @@ public sealed class AssistantService(
         logger.LogInformation(
             "Assistant debug stream completed. MCP connect {McpConnectMilliseconds} ms, " +
             "tool discovery {ToolDiscoveryMilliseconds} ms, model and tool run {AgentRunMilliseconds} ms, " +
-            "total {TotalMilliseconds} ms, reply length {ReplyLength}.",
+            "total {TotalMilliseconds} ms, reply length {ReplyLength}, output tokens {OutputTokens}.",
             Stopwatch.GetElapsedTime(requestStartedAt, mcpConnectedAt).TotalMilliseconds,
             Stopwatch.GetElapsedTime(mcpConnectedAt, toolsListedAt).TotalMilliseconds,
             Stopwatch.GetElapsedTime(toolsListedAt).TotalMilliseconds,
             Stopwatch.GetElapsedTime(requestStartedAt).TotalMilliseconds,
-            reply.Length);
+            reply.Length,
+            lastOutputTokenCount);
 
         if (reply.Length == 0)
         {
+            var error = lastOutputTokenCount >= maximumOutputTokens
+                ? "The model reached the debug output limit before returning an answer. Try a shorter request or turn off debug mode."
+                : "The assistant did not produce a user-facing response.";
+            logger.LogWarning(
+                "Assistant debug stream produced no answer. Output tokens {OutputTokens}, configured limit {OutputTokenLimit}.",
+                lastOutputTokenCount,
+                maximumOutputTokens);
             yield return new AssistantDebugEvent(
                 "assistant",
                 "error",
-                "The assistant did not produce a user-facing response.");
+                error);
             yield break;
         }
 
@@ -210,10 +235,11 @@ public sealed class AssistantService(
     private AIAgent CreateAgent(IList<AITool> tools) =>
         chatClient.AsAIAgent("EbankAssistant", Instructions, tools: tools);
 
-    private static ChatClientAgentRunOptions CreateRunOptions(bool debugMode) =>
-        new(new ChatOptions
+    private static ChatClientAgentRunOptions CreateRunOptions(bool debugMode)
+    {
+        return new ChatClientAgentRunOptions(new ChatOptions
         {
-            MaxOutputTokens = 2048,
+            MaxOutputTokens = MaximumOutputTokens,
             Reasoning = new ReasoningOptions
             {
                 Effort = ReasoningEffort.Low,
@@ -221,10 +247,11 @@ public sealed class AssistantService(
             },
             AdditionalProperties = new AdditionalPropertiesDictionary
             {
-                [OllamaOption.NumCtx.Name] = 4096,
-                [OllamaOption.NumPredict.Name] = 2048
+                [OllamaOption.NumCtx.Name] = ContextTokens,
+                [OllamaOption.NumPredict.Name] = MaximumOutputTokens
             }
         });
+    }
 
     private static string SerializeDebugValue(object? value) =>
         value is string text

@@ -165,6 +165,7 @@ function App() {
   const accountMenuRef = useRef<HTMLDivElement>(null)
   const accountMenuButtonRef = useRef<HTMLButtonElement>(null)
   const assistantBodyRef = useRef<HTMLDivElement>(null)
+  const assistantDebugLogRef = useRef<HTMLPreElement>(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
@@ -176,6 +177,9 @@ function App() {
   useEffect(() => {
     if (assistantSending && assistantBodyRef.current) {
       assistantBodyRef.current.scrollTop = assistantBodyRef.current.scrollHeight
+    }
+    if (assistantSending && assistantDebugLogRef.current) {
+      assistantDebugLogRef.current.scrollTop = assistantDebugLogRef.current.scrollHeight
     }
   }, [assistantMessages, assistantSending])
 
@@ -590,7 +594,7 @@ function App() {
         <aside id="assistant-chat" className="assistant-chat-panel" aria-label="Ebank assistant">
           <div className="assistant-chat-header">
             <div>
-              <span className="assistant-chat-symbol" aria-hidden="true">✳</span>
+              <AssistantBotIcon className="assistant-chat-symbol" />
               <span>
                 <strong>Ebank assistant</strong>
                 <small>Read-only account help</small>
@@ -631,12 +635,13 @@ function App() {
                         <summary>Model debug ({message.debug.length} events)</summary>
                         {message.debug.length === 0 ? (
                           <p className="assistant-debug-empty">No model or tool events were returned.</p>
-                        ) : message.debug.map((debugEvent, eventIndex) => (
-                          <section className="assistant-debug-event" key={`${debugEvent.type}-${eventIndex}`}>
-                            <span>{debugEvent.type} · {debugEvent.role}</span>
-                            <pre>{debugEvent.content}</pre>
-                          </section>
-                        ))}
+                        ) : (
+                          <pre className="assistant-debug-log" ref={assistantDebugLogRef}>
+                            {message.debug.map((debugEvent) =>
+                              `[${debugEvent.type} · ${debugEvent.role}]\n${debugEvent.content}`,
+                            ).join('\n\n')}
+                          </pre>
+                        )}
                       </details>
                     )}
                   </div>
@@ -1296,9 +1301,9 @@ function DisplayPreferences({
   )
 }
 
-function AssistantBotIcon() {
+function AssistantBotIcon({ className = '' }: { className?: string }) {
   return (
-    <span className="assistant-bot-icon" aria-hidden="true">
+    <span className={`assistant-bot-icon ${className}`} aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none">
         <path d="M12 4V2.75" />
         <circle cx="12" cy="2.5" r="1" />
