@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="790" viewBox="0 0 1280 790" role="img" aria-labelledby="title description">
+  <title id="title">Ebank application architecture</title>
+  <desc id="description">React authenticates users with Keycloak and calls the ASP.NET Core API. The API hosts the Microsoft Agent Framework agent, which calls the model in LM Studio and selects read-only MCP tools. The MCP service validates the user's token and calls customer-scoped API endpoints backed by PostgreSQL.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#52795d"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#537da5"/>
+    </marker>
+    <style>
+      text { font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #26372d; }
+      .title { font-size: 26px; font-weight: 700; }
+      .subtitle { font-size: 13px; fill: #647268; }
+      .zone-title { font-size: 12px; font-weight: 700; letter-spacing: 1px; fill: #607166; }
+      .box-title { font-size: 16px; font-weight: 700; }
+      .box-copy { font-size: 12px; fill: #536258; }
+      .label { font-size: 11px; font-weight: 600; fill: #425349; }
+      .small-label { font-size: 10px; fill: #5d6d61; }
+      .zone { fill: #f7f8f5; stroke: #dfe5dd; stroke-width: 1.5; }
+      .component { fill: #ffffff; stroke: #d9e1d8; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #52795d; stroke-width: 2.2; marker-end: url(#arrow); }
+      .auth { fill: none; stroke: #537da5; stroke-width: 2; stroke-dasharray: 7 5; marker-end: url(#arrow-blue); }
+    </style>
+  </defs>
+
+  <rect width="1280" height="790" rx="18" fill="#fbfcfa"/>
+  <text x="40" y="48" class="title">Ebank application architecture</text>
+  <text x="40" y="72" class="subtitle">Authenticated, read-only assistant flow using Microsoft Agent Framework, MCP, and LM Studio</text>
+
+  <rect x="32" y="96" width="286" height="632" rx="14" class="zone"/>
+  <text x="54" y="124" class="zone-title">CUSTOMER EXPERIENCE</text>
+
+  <rect x="57" y="154" width="236" height="126" rx="12" class="component"/>
+  <rect x="57" y="154" width="6" height="126" rx="3" fill="#4f805c"/>
+  <text x="79" y="184" class="box-title">React + TypeScript</text>
+  <text x="79" y="210" class="box-copy">Dashboard and assistant panel</text>
+  <text x="79" y="232" class="box-copy">OIDC Authorization Code + PKCE</text>
+  <text x="79" y="254" class="box-copy">Refreshes token before API calls</text>
+
+  <rect x="57" y="480" width="236" height="142" rx="12" class="component"/>
+  <rect x="57" y="480" width="6" height="142" rx="3" fill="#537da5"/>
+  <text x="79" y="512" class="box-title">Keycloak</text>
+  <text x="79" y="538" class="box-copy">Identity and registration</text>
+  <text x="79" y="560" class="box-copy">Signs access tokens</text>
+  <text x="79" y="582" class="box-copy">Subject: <tspan font-family="ui-monospace, monospace">sub</tspan> · API/MCP audiences</text>
+
+  <rect x="350" y="96" width="550" height="632" rx="14" class="zone"/>
+  <text x="372" y="124" class="zone-title">EBANK BACKEND · .NET</text>
+
+  <rect x="380" y="154" width="490" height="126" rx="12" class="component"/>
+  <rect x="380" y="154" width="6" height="126" rx="3" fill="#315b40"/>
+  <text x="402" y="184" class="box-title">ASP.NET Core Ebank API</text>
+  <text x="402" y="210" class="box-copy">Validates Keycloak bearer token and protects customer-scoped endpoints</text>
+  <text x="402" y="232" class="box-copy">REST APIs: accounts · transactions · overview</text>
+  <text x="402" y="254" class="box-copy">Assistant: <tspan font-family="ui-monospace, monospace">POST /api/assistant/chat</tspan> (JSON or SSE debug stream)</text>
+
+  <rect x="380" y="316" width="490" height="130" rx="12" fill="#eef5ef" stroke="#b9d0bc" stroke-width="1.5"/>
+  <text x="402" y="346" class="box-title">Microsoft Agent Framework · AIAgent</text>
+  <text x="402" y="372" class="box-copy">IChatClient + Ebank instructions + MCP-discovered tools</text>
+  <text x="402" y="394" class="box-copy">Model chooses tool; agent executes it and returns result to model</text>
+  <text x="402" y="416" class="box-copy">Normal: RunAsync · Debug: RunStreamingAsync</text>
+
+  <rect x="380" y="490" width="490" height="152" rx="12" class="component"/>
+  <rect x="380" y="490" width="6" height="152" rx="3" fill="#7a8e78"/>
+  <text x="402" y="520" class="box-title">Authenticated MCP service</text>
+  <text x="402" y="546" class="box-copy">Streamable HTTP · validates the same user token</text>
+  <text x="402" y="572" class="box-copy">Read-only tools:</text>
+  <text x="402" y="594" class="small-label">list_accounts · get_recent_transactions · get_account_recent_transactions</text>
+  <text x="402" y="614" class="small-label">get_transactions_in_date_range · get_account_transactions_in_date_range</text>
+
+  <rect x="932" y="96" width="316" height="270" rx="14" class="zone"/>
+  <text x="954" y="124" class="zone-title">LOCAL MODEL PROVIDER</text>
+  <rect x="960" y="154" width="260" height="160" rx="12" class="component"/>
+  <rect x="960" y="154" width="6" height="160" rx="3" fill="#b78442"/>
+  <text x="982" y="186" class="box-title">LM Studio</text>
+  <text x="982" y="214" class="box-copy">Local Gemma model</text>
+  <text x="982" y="238" class="box-copy">OpenAI-compatible API</text>
+  <text x="982" y="262" class="box-copy">Chat completions + tool calls</text>
+  <text x="982" y="286" class="small-label">127.0.0.1:1234/v1 (host API)</text>
+
+  <rect x="932" y="396" width="316" height="246" rx="14" class="zone"/>
+  <text x="954" y="424" class="zone-title">DATA STORAGE</text>
+  <rect x="960" y="454" width="260" height="148" rx="12" class="component"/>
+  <rect x="960" y="454" width="6" height="148" rx="3" fill="#537da5"/>
+  <text x="982" y="486" class="box-title">PostgreSQL</text>
+  <text x="982" y="514" class="box-copy">Ebank demo accounts</text>
+  <text x="982" y="538" class="box-copy">Transactions and KYC data</text>
+  <text x="982" y="562" class="box-copy">Keycloak identity database</text>
+  <text x="982" y="584" class="small-label">Separate databases / volumes</text>
+
+  <path d="M293 205H370" class="flow"/>
+  <text x="304" y="192" class="label">chat + bearer token</text>
+
+  <path d="M175 280V468" class="auth"/>
+  <text x="188" y="390" class="label">sign-in / OIDC</text>
+  <path d="M293 510C334 474 327 229 370 229" class="auth"/>
+  <text x="296" y="460" class="small-label">JWT validation</text>
+
+  <path d="M625 280V306" class="flow"/>
+  <text x="638" y="300" class="small-label">assistant request</text>
+
+  <path d="M870 366C910 350 920 290 951 254" class="flow"/>
+  <text x="872" y="326" class="label">model request / response</text>
+
+  <path d="M625 446V480" class="flow"/>
+  <text x="638" y="468" class="small-label">selected tool call</text>
+
+  <path d="M380 566C334 566 334 258 370 258" class="flow"/>
+  <text x="318" y="352" class="small-label" transform="rotate(-90 318 352)">customer-scoped API + forwarded token</text>
+
+  <path d="M870 264H916V500H951" class="flow"/>
+  <text x="922" y="425" class="small-label" transform="rotate(-90 922 425)">API persistence</text>
+
+  <path d="M318 550H370" class="auth"/>
+  <text x="323" y="538" class="small-label">token issuer</text>
+
+  <text x="40" y="760" class="small-label">Solid arrows: application/tool/data flow · Dashed blue arrows: identity and token validation</text>
+</svg>

@@ -7,6 +7,85 @@ web client, ASP.NET Core for APIs, and Keycloak for customer identity.
 > not connected to a banking system. The AI assistant is read-only and real
 > financial operations are not implemented.
 
+## Architecture
+
+### Application components
+
+- **React + TypeScript (`web/`)** renders the dashboard and assistant panel.
+  Keycloak's browser client signs users in with OpenID Connect Authorization
+  Code + PKCE and refreshes the access token before protected requests.
+- **Keycloak** is the identity provider. Its access token identifies the
+  signed-in user with the `sub` claim and carries audiences for the Ebank API
+  and MCP service.
+- **ASP.NET Core Ebank API (`src/Ebank.Api/`)** validates access tokens,
+  exposes customer-scoped account and transaction APIs, and hosts the
+  authenticated assistant endpoint.
+- **Microsoft Agent Framework** runs the assistant as an `AIAgent`. It receives
+  the model client, concise banking instructions, and MCP-discovered tools.
+  The model chooses when and which tool to call; the API does not select a tool
+  by matching phrases or implement a parallel set of direct tool calls.
+- **LM Studio** serves the configured local model through its OpenAI-compatible
+  Chat Completions API. The API uses `Microsoft.Extensions.AI.OpenAI` to expose
+  that provider as an `IChatClient`, which Agent Framework uses.
+- **MCP service (`src/Ebank.Mcp/`)** exposes the read-only account and
+  transaction tools over Streamable HTTP. It independently validates the
+  user's Keycloak token and calls the existing authenticated Ebank APIs.
+- **PostgreSQL** stores the illustrative account and transaction data, as well
+  as customer/KYC records. The Ebank API scopes account and transaction
+  queries to the authenticated user's Keycloak `sub`.
+
+### Assistant request and tool flow
+
+![Ebank application and assistant architecture](docs/architecture.svg)
+
+For each assistant request, the API creates an MCP client with the current
+user's bearer token, discovers the available tools, and supplies those tools
+to the Agent Framework agent. The agent invokes the model with the conversation
+and tool definitions. If the model requests a tool, Agent Framework executes
+that tool through MCP, the MCP service forwards the same user authorization
+to the protected Ebank API, and the result is returned to the agent for its
+final answer. The bearer token is used only for authorization between these
+services; it is not included in model prompts, tool arguments, or chat history.
+
+The available tools are:
+
+| Tool | Purpose |
+| --- | --- |
+| `list_accounts` | List the signed-in customer's accounts, balances, and currencies. |
+| `get_recent_transactions` | Return the five newest transactions across the customer's accounts. |
+| `get_account_recent_transactions` | Return the five newest transactions on a specified customer-owned account. |
+| `get_transactions_in_date_range` | Return transactions across accounts between inclusive UTC calendar dates (`yyyy-MM-dd`). |
+| `get_account_transactions_in_date_range` | Return transactions for a specified customer-owned account and inclusive UTC date range. |
+
+Date-range requests are limited to at most 367 calendar days, and results are
+capped at 1,000 transactions. The tool response indicates when a result is
+truncated. All tools are read-only; none can create transactions, change
+balances, or move money.
+
+### Microsoft Agent Framework and response modes
+
+The API adapts the configured model `IChatClient` into an agent with
+`AsAIAgent`, the Ebank assistant instructions, and the tools discovered from
+MCP. The instructions tell the agent which tool capabilities are available,
+when to ask for clarification, how to handle date ranges and truncation, and
+that replies must be concise and based on tool results. Tool selection and
+execution remain agent-driven.
+
+- **Normal mode** uses `AIAgent.RunAsync` and returns a JSON response after the
+  model/tool run has finished. Model reasoning is not included in the response.
+- **Debug mode** uses `AIAgent.RunStreamingAsync`. The endpoint streams
+  Server-Sent Events (`text/event-stream`) as reasoning, tool calls, tool
+  results, and answer text arrive. The React client assembles these into a
+  consolidated live debug log while displaying answer text in the chat.
+  Debug output can include private account and transaction data, so it should
+  be used only for local troubleshooting and not shared publicly.
+
+The model receives the configured output-token limit (4,096); configure the
+model's context size in LM Studio. Assistant history is bounded before it is
+sent: at most eight recent messages and 12,000 prompt characters are retained,
+and long prior assistant replies are summarized. The API logs MCP connection,
+tool discovery, and agent-run durations to help diagnose latency.
+
 ## Local development
 
 Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
