@@ -40,7 +40,11 @@ var ollamaEndpoint = builder.Configuration["Assistant:OllamaEndpoint"]
 var ollamaModel = builder.Configuration["Assistant:OllamaModel"]
     ?? throw new InvalidOperationException("Assistant:OllamaModel must be configured.");
 builder.Services.AddSingleton<IChatClient>(_ =>
-    new OllamaApiClient(new Uri(ollamaEndpoint), ollamaModel));
+    new OllamaApiClient(new HttpClient
+    {
+        BaseAddress = new Uri(ollamaEndpoint),
+        Timeout = TimeSpan.FromMinutes(3)
+    }, ollamaModel));
 builder.Services.AddSingleton(new AssistantMcpOptions(
     new Uri(builder.Configuration["Assistant:McpEndpoint"]
         ?? throw new InvalidOperationException("Assistant:McpEndpoint must be configured."))));

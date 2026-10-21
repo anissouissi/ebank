@@ -57,6 +57,13 @@ type OverviewSummary = {
 type AssistantMessage = {
   role: 'user' | 'assistant'
   content: string
+  debug?: AssistantDebugEvent[]
+}
+
+type AssistantDebugEvent = {
+  role: string
+  type: string
+  content: string
 }
 
 const TODAY_LABEL = new Intl.DateTimeFormat('en-US', {
@@ -64,6 +71,48 @@ const TODAY_LABEL = new Intl.DateTimeFormat('en-US', {
   month: 'long',
   day: 'numeric',
 }).format(new Date()).toUpperCase()
+
+async function readAssistantDebugStream(
+  response: Response,
+  onEvent: (event: AssistantDebugEvent) => void,
+) {
+  if (!response.body) {
+    throw new Error('The assistant debug stream was unavailable.')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  const dispatchFrame = (frame: string) => {
+    const data = frame
+      .split(/\r?\n/)
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trimStart())
+      .join('\n')
+    if (data) onEvent(JSON.parse(data) as AssistantDebugEvent)
+  }
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      buffer += decoder.decode(value, { stream: !done })
+      let separator = buffer.search(/\r?\n\r?\n/)
+      while (separator >= 0) {
+        const frame = buffer.slice(0, separator)
+        const separatorLength = buffer.slice(separator).match(/^\r?\n\r?\n/)?.[0].length ?? 2
+        buffer = buffer.slice(separator + separatorLength)
+        dispatchFrame(frame)
+        separator = buffer.search(/\r?\n\r?\n/)
+      }
+
+      if (done) break
+    }
+
+    if (buffer.trim()) dispatchFrame(buffer)
+  } finally {
+    reader.releaseLock()
+  }
+}
 
 function App() {
   const [authenticated, setAuthenticated] = useState(false)
@@ -106,12 +155,20 @@ function App() {
   const [assistantMessages, setAssistantMessages] = useState<AssistantMessage[]>([])
   const [assistantInput, setAssistantInput] = useState('')
   const [assistantSending, setAssistantSending] = useState(false)
+  const [assistantDebugMode, setAssistantDebugMode] = useState(false)
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [assistantNeedsLogin, setAssistantNeedsLogin] = useState(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const accountMenuRef = useRef<HTMLDivElement>(null)
   const accountMenuButtonRef = useRef<HTMLButtonElement>(null)
+  const assistantBodyRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (assistantSending && assistantBodyRef.current) {
+      assistantBodyRef.current.scrollTop = assistantBodyRef.current.scrollHeight
+    }
+  }, [assistantMessages, assistantSending])
 
   useEffect(() => {
     initializeKeycloak()
@@ -412,6 +469,19 @@ function App() {
         const nextMessages = [...assistantMessages, { role: 'user' as const, content }]
         setAssistantMessages(nextMessages)
         setAssistantInput('')
+        const contextMessages: AssistantMessage[] = []
+        let contextLength = 0
+        for (const message of nextMessages.slice(-8).reverse()) {
+          const contextMessage = message.role === 'assistant' && message.content.length > 1_000
+            ? {
+                role: 'assistant' as const,
+                content: 'A previous reply contained a long transaction list; retrieve relevant details again if needed.',
+              }
+            : { role: message.role, content: message.content }
+          if (contextLength + contextMessage.content.length > 12_000) break
+          contextMessages.push(contextMessage)
+          contextLength += contextMessage.content.length
+        }
 
         try {
           await keycloak.updateToken(30)
@@ -427,7 +497,10 @@ function App() {
               Authorization: `Bearer ${keycloak.token}`,
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ messages: nextMessages.slice(-12) }),
+            body: JSON.stringify({
+              messages: contextMessages.reverse(),
+              debugMode: assistantDebugMode,
+            }),
           })
           if (response.status === 401) {
             setAssistantNeedsLogin(true)
@@ -439,12 +512,65 @@ function App() {
               : `The assistant could not answer (HTTP ${response.status}).`)
           }
 
-          const result = await response.json() as { reply: string }
-          setAssistantMessages((current) => [...current, {
-            role: 'assistant',
-            content: result.reply,
-          }])
+          if (assistantDebugMode) {
+            setAssistantMessages((current) => [...current, {
+              role: 'assistant',
+              content: '',
+              debug: [],
+            }])
+            let streamCompleted = false
+            let streamFailed = false
+            await readAssistantDebugStream(response, (debugEvent) => {
+              if (debugEvent.type === 'complete') {
+                streamCompleted = true
+                return
+              }
+
+              if (debugEvent.type === 'error') {
+                streamFailed = true
+                setAssistantError(debugEvent.content)
+              }
+
+              setAssistantMessages((current) => current.map((message, index) => {
+                if (index !== current.length - 1 || message.role !== 'assistant') return message
+                const debug = message.debug ?? []
+                const previousEvent = debug.at(-1)
+                const isTextDelta = debugEvent.type === 'reasoning' ||
+                  debugEvent.type === 'answer_delta' ||
+                  debugEvent.type === 'model_output'
+                const shouldAppendToPrevious = isTextDelta &&
+                  previousEvent?.type === debugEvent.type &&
+                  previousEvent.role === debugEvent.role
+                const nextDebug = debugEvent.type === 'answer_delta'
+                  ? debug
+                  : shouldAppendToPrevious
+                    ? [
+                        ...debug.slice(0, -1),
+                        { ...previousEvent, content: previousEvent.content + debugEvent.content },
+                      ]
+                    : [...debug, debugEvent]
+                return {
+                  ...message,
+                  content: debugEvent.type === 'answer_delta'
+                    ? message.content + debugEvent.content
+                    : message.content,
+                  debug: nextDebug,
+                }
+              }))
+            })
+            if (!streamCompleted && !streamFailed) {
+              throw new Error('The assistant debug stream ended before completion.')
+            }
+          } else {
+            const result = await response.json() as { reply: string }
+            setAssistantMessages((current) => [...current, {
+              role: 'assistant',
+              content: result.reply,
+            }])
+          }
         } catch (error) {
+          setAssistantMessages((current) => current.filter((message, index) =>
+            index !== current.length - 1 || message.role !== 'assistant' || message.content.length > 0))
           setAssistantError(error instanceof Error ? error.message : 'Could not contact the assistant.')
         } finally {
           setAssistantSending(false)
@@ -464,7 +590,7 @@ function App() {
             <button type="button" className="assistant-close"
               aria-label="Close assistant" onClick={() => setAssistantOpen(false)}>×</button>
           </div>
-          <div className="assistant-chat-body" aria-live="polite">
+          <div className="assistant-chat-body" aria-live="polite" ref={assistantBodyRef}>
             <div className="assistant-safety-note">
               Demo data only. The assistant can read your accounts and transactions; it cannot move money.
             </div>
@@ -491,6 +617,19 @@ function App() {
                   <div className={`assistant-chat-message ${message.role}`} key={`${message.role}-${index}`}>
                     <span>{message.role === 'user' ? 'You' : 'Ebank assistant'}</span>
                     <p>{message.content}</p>
+                    {assistantDebugMode && message.role === 'assistant' && message.debug && (
+                      <details className="assistant-debug-details" open>
+                        <summary>Model debug ({message.debug.length} events)</summary>
+                        {message.debug.length === 0 ? (
+                          <p className="assistant-debug-empty">No model or tool events were returned.</p>
+                        ) : message.debug.map((debugEvent, eventIndex) => (
+                          <section className="assistant-debug-event" key={`${debugEvent.type}-${eventIndex}`}>
+                            <span>{debugEvent.type} · {debugEvent.role}</span>
+                            <pre>{debugEvent.content}</pre>
+                          </section>
+                        ))}
+                      </details>
+                    )}
                   </div>
                 ))}
                 {assistantSending && <p className="assistant-thinking">Checking your account data...</p>}
@@ -510,6 +649,15 @@ function App() {
                     event.currentTarget.form?.requestSubmit()
                   }
                 }} />
+              <label className="assistant-debug-toggle">
+                <input
+                  type="checkbox"
+                  checked={assistantDebugMode}
+                  disabled={assistantSending}
+                  onChange={(event) => setAssistantDebugMode(event.target.checked)}
+                />
+                <span>Debug mode</span>
+              </label>
               <button className="assistant-send" type="submit"
                 disabled={assistantSending || !assistantInput.trim()}
                 aria-label="Send message">

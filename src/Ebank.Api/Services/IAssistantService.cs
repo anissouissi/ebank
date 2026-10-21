@@ -8,6 +8,11 @@ public interface IAssistantService
         IReadOnlyList<AssistantChatMessage> messages,
         string bearerToken,
         CancellationToken cancellationToken);
+
+    IAsyncEnumerable<AssistantDebugEvent> RunDebugStreamAsync(
+        IReadOnlyList<AssistantChatMessage> messages,
+        string bearerToken,
+        CancellationToken cancellationToken);
 }
 
 public sealed record AssistantMcpOptions(Uri Endpoint);

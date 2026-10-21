@@ -36,7 +36,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     environment:
-      OLLAMA_KEEP_ALIVE: 5m
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-30m}
     ports:
       - "127.0.0.1:11434:11434"
     volumes:

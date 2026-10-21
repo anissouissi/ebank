@@ -39,7 +39,11 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
 
    The model download can take several minutes the first time. Check its
    progress with `docker compose logs -f ollama-model-init`. To select another
-   Ollama model, set `OLLAMA_MODEL` in `.env` before starting Compose. Realm
+   Ollama model, set `OLLAMA_MODEL` in `.env` before starting Compose. By
+   default, Ollama keeps the model loaded for 30 minutes after use; set
+   `OLLAMA_KEEP_ALIVE` in `.env` to change this (longer durations trade more
+   memory use for fewer cold starts). Apply a changed keep-alive setting with
+   `docker compose up -d --force-recreate ollama`. Realm
    import happens only when the realm does not already exist. If you started
    Keycloak before enabling registration or adding the API/MCP audiences,
    update that existing realm in the admin console: enable **Realm settings →
@@ -147,6 +151,23 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    `get_account_transactions_in_date_range`. Date-range tool dates are UTC
    calendar dates, inclusive at both ends. Range results are capped at 1,000
    entries; the assistant reports when this safety cap truncates a result.
+   The API requests low Qwen3 reasoning effort so the model can select and call
+   the appropriate MCP tool, limits context to 4,096 tokens and responses to
+   2,048 tokens, and allows up to three minutes for the Ollama HTTP request.
+   Reasoning content is separate from the assistant's user-facing text. The API
+   logs MCP connection, tool discovery, and model/tool
+   run durations separately to help identify future bottlenecks. The Agent
+   Framework agent receives all five authenticated MCP tools and selects the
+   appropriate tool based on the user's request; the API does not route requests
+   by matching phrases or call individual tools outside the agent run.
+   The assistant's **Debug mode** checkbox switches the authenticated chat to a
+   Server-Sent Events stream. Model reasoning, selected tool calls and arguments,
+   tool results, and answer text appear as the agent emits them. Tool results can
+   contain account and transaction data; leave debug mode off during normal use
+   and avoid sharing its output.
+   Long assistant replies remain visible in the chat but are summarized when
+   sending follow-up context; this keeps large transaction lists from causing
+   request-validation errors or needlessly expanding model prompts.
    The local MCP host port is bound to `127.0.0.1:7101`; the assistant API
    reaches Ollama at `localhost:11434` and MCP at `localhost:7101`.
 
