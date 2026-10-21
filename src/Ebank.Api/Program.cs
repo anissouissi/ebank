@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Http.Json;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
+using System.ClientModel;
 using Microsoft.Extensions.AI;
-using OllamaSharp;
+using OpenAI;
+using OpenAI.Chat;
 using ModelContextProtocol.Client;
 using Ebank.Api.Data;
 using Ebank.Api.Endpoints;
@@ -35,16 +37,21 @@ builder.Services.AddScoped<IAccountService, AccountService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<IOverviewService, OverviewService>();
 builder.Services.AddScoped<IAssistantService, AssistantService>();
-var ollamaEndpoint = builder.Configuration["Assistant:OllamaEndpoint"]
-    ?? throw new InvalidOperationException("Assistant:OllamaEndpoint must be configured.");
-var ollamaModel = builder.Configuration["Assistant:OllamaModel"]
-    ?? throw new InvalidOperationException("Assistant:OllamaModel must be configured.");
+var modelEndpoint = builder.Configuration["Assistant:ModelEndpoint"]
+    ?? throw new InvalidOperationException("Assistant:ModelEndpoint must be configured.");
+var modelName = builder.Configuration["Assistant:Model"]
+    ?? throw new InvalidOperationException("Assistant:Model must be configured.");
+var modelApiKey = builder.Configuration["Assistant:ApiKey"]
+    ?? throw new InvalidOperationException("Assistant:ApiKey must be configured.");
 builder.Services.AddSingleton<IChatClient>(_ =>
-    new OllamaApiClient(new HttpClient
-    {
-        BaseAddress = new Uri(ollamaEndpoint),
-        Timeout = TimeSpan.FromMinutes(3)
-    }, ollamaModel));
+    new ChatClient(
+        modelName,
+        new ApiKeyCredential(modelApiKey),
+        new OpenAIClientOptions
+        {
+            Endpoint = new Uri(modelEndpoint),
+            NetworkTimeout = TimeSpan.FromMinutes(3)
+        }).AsIChatClient());
 builder.Services.AddSingleton(new AssistantMcpOptions(
     new Uri(builder.Configuration["Assistant:McpEndpoint"]
         ?? throw new InvalidOperationException("Assistant:McpEndpoint must be configured."))));

@@ -6,7 +6,6 @@ using Microsoft.Agents.AI;
 using Ebank.Api.Endpoints;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
-using OllamaSharp.Models;
 
 namespace Ebank.Api.Services;
 
@@ -19,7 +18,6 @@ public sealed class AssistantService(
     private const int MaximumPromptMessages = 8;
     private const int MaximumAssistantHistoryMessageLength = 1_000;
     private const int MaximumOutputTokens = 4_096;
-    private const int ContextTokens = 8_192;
     private const string LongAssistantHistorySummary =
         "A previous assistant reply was omitted; retrieve any needed account or transaction details again using the available tools.";
 
@@ -244,11 +242,6 @@ public sealed class AssistantService(
             {
                 Effort = ReasoningEffort.Low,
                 Output = debugMode ? ReasoningOutput.Full : ReasoningOutput.None
-            },
-            AdditionalProperties = new AdditionalPropertiesDictionary
-            {
-                [OllamaOption.NumCtx.Name] = ContextTokens,
-                [OllamaOption.NumPredict.Name] = MaximumOutputTokens
             }
         });
     }

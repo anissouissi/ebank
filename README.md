@@ -26,9 +26,10 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
 
    PostgreSQL stores Keycloak's realm and identity data in the persistent
    `keycloak-db` Docker volume. Keycloak imports the `ebank` realm and
-   `ebank-web` public client on first start. The Compose stack also starts
-   Ollama, downloads the configured model on first run, and starts the
-   authenticated MCP service. Self-registration is enabled:
+   `ebank-web` public client on first start. The Compose stack starts the
+   authenticated MCP service. Start LM Studio separately, enable its local
+   server at `http://127.0.0.1:1234`, and load `google/gemma-4-26b-a4b-qat`
+   before starting the API. Self-registration is enabled:
    open <http://localhost:5173> and choose **Create an account** to use
    Keycloak's hosted registration page, then sign in with the new credentials.
    The admin console is at
@@ -37,14 +38,9 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    demo account records in its own `ebank` database and persistent `ebank-db`
    volume, exposed to the host on port 5433.
 
-   The model download can take several minutes the first time. Check its
-   progress with `docker compose logs -f ollama-model-init`. To select another
-   Ollama model, set `OLLAMA_MODEL` in `.env` before starting Compose. By
-   default, Ollama keeps the model loaded for 30 minutes after use; set
-   `OLLAMA_KEEP_ALIVE` in `.env` to change this (longer durations trade more
-   memory use for fewer cold starts). Apply a changed keep-alive setting with
-   `docker compose up -d --force-recreate ollama`. Realm
-   import happens only when the realm does not already exist. If you started
+   If LM Studio requires an API key, store it as a local user secret with
+   `dotnet user-secrets set "Assistant:ApiKey" "<your-local-key>" --project src/Ebank.Api`.
+   Realm import happens only when the realm does not already exist. If you started
    Keycloak before enabling registration or adding the API/MCP audiences,
    update that existing realm in the admin console: enable **Realm settings →
    Login → User registration**, and ensure the `ebank-api` bearer-only client
@@ -68,8 +64,7 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    dotnet user-secrets set "ConnectionStrings:Ebank" "Host=localhost;Port=5433;Database=ebank;Username=$EBANK_DB_USER;Password=$EBANK_DB_PASSWORD" --project src/Ebank.Api
    dotnet tool restore
    dotnet ef database update --project src/Ebank.Api
-   Assistant__OllamaModel="${OLLAMA_MODEL:-qwen3:4b}" dotnet run \
-     --project src/Ebank.Api --urls http://0.0.0.0:5100
+   dotnet run --project src/Ebank.Api --urls http://0.0.0.0:5100
    ```
 
    The local MCP container calls the host-run API through
@@ -144,16 +139,17 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    session and passes the token to the separately hosted MCP service, which
    validates it again and forwards it to the existing customer-scoped APIs.
    The token is never included in prompts, tool arguments, conversation
-   history, or requests to Ollama. The assistant uses the configured
-   `qwen3:4b` model by default and provides five read-only tools:
+   history, or requests to the model provider. The assistant uses the configured
+   Gemma model in LM Studio by default and provides five read-only tools:
    `list_accounts`, `get_recent_transactions`,
    `get_transactions_in_date_range`, `get_account_recent_transactions`, and
    `get_account_transactions_in_date_range`. Date-range tool dates are UTC
    calendar dates, inclusive at both ends. Range results are capped at 1,000
    entries; the assistant reports when this safety cap truncates a result.
-   The API requests low Qwen3 reasoning effort so the model can select and call
-   the appropriate MCP tool, limits context to 4,096 tokens and responses to
-   2,048 tokens, and allows up to three minutes for the Ollama HTTP request.
+   The API requests low reasoning effort so the model can select and call
+   the appropriate MCP tool, limits responses to 4,096 tokens, and allows up
+   to three minutes for the LM Studio HTTP request. Configure the model's
+   context size in LM Studio.
    Reasoning content is separate from the assistant's user-facing text. The API
    logs MCP connection, tool discovery, and model/tool
    run durations separately to help identify future bottlenecks. The Agent
@@ -169,7 +165,7 @@ Requirements: .NET 10 SDK, Node.js/npm, and Docker Compose.
    sending follow-up context; this keeps large transaction lists from causing
    request-validation errors or needlessly expanding model prompts.
    The local MCP host port is bound to `127.0.0.1:7101`; the assistant API
-   reaches Ollama at `localhost:11434` and MCP at `localhost:7101`.
+   reaches LM Studio at `127.0.0.1:1234` and MCP at `localhost:7101`.
 
 ## Configuration
 
