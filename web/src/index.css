@@ -1,28 +1,60 @@
 :root {
   font-family: 'DM Sans', 'Segoe UI', sans-serif;
-  color: #26372d;
-  background: #f8f8f5;
+  color: var(--ink);
+  background: var(--page-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  color-scheme: light;
 
   --green: #204b37;
   --ink: #26372d;
   --ink-soft: #778078;
   --ink-muted: #929a92;
   --border: #e8e9e2;
+  --page-bg: #f8f8f5;
+  --surface: #fff;
+  --surface-muted: #f5f7f3;
+  --text-secondary: #657167;
   --serif: 'Newsreader', Georgia, serif;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --green: #4b8a63;
+  --ink: #e4ece5;
+  --ink-soft: #b5c0b7;
+  --ink-muted: #9aa69c;
+  --border: #35453a;
+  --page-bg: #141b17;
+  --surface: #1d2821;
+  --surface-muted: #26332a;
+  --text-secondary: #b2beb4;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   min-width: 320px;
-  min-height: 100vh;
   margin: 0;
+  background: var(--page-bg);
+  color: var(--ink);
 }
 
 button,

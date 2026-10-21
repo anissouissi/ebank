@@ -117,6 +117,8 @@ async function readAssistantDebugStream(
 function App() {
   const [authenticated, setAuthenticated] = useState(false)
   const [ready, setReady] = useState(false)
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('ebank-theme') === 'dark')
+  const [largerText, setLargerText] = useState(() => localStorage.getItem('ebank-text-size') === 'large')
   const [page, setPage] = useState<'overview' | 'accounts' | 'transactions' | 'demo' | 'profile'>('overview')
   const [accountMenuOpen, setAccountMenuOpen] = useState(false)
   const [customer, setCustomer] = useState<Customer | null>(null)
@@ -132,7 +134,7 @@ function App() {
   const [transactions, setTransactions] = useState<TransactionPage>({
     items: [],
     page: 1,
-    pageSize: 25,
+    pageSize: 10,
     totalCount: 0,
   })
   const [transactionsLoading, setTransactionsLoading] = useState(false)
@@ -163,6 +165,13 @@ function App() {
   const accountMenuRef = useRef<HTMLDivElement>(null)
   const accountMenuButtonRef = useRef<HTMLButtonElement>(null)
   const assistantBodyRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = darkMode ? 'dark' : 'light'
+    document.documentElement.dataset.textSize = largerText ? 'large' : 'normal'
+    localStorage.setItem('ebank-theme', darkMode ? 'dark' : 'light')
+    localStorage.setItem('ebank-text-size', largerText ? 'large' : 'normal')
+  }, [darkMode, largerText])
 
   useEffect(() => {
     if (assistantSending && assistantBodyRef.current) {
@@ -683,10 +692,18 @@ function App() {
       <>
       <main className="welcome-screen">
         <section className="welcome-card">
-          <a className="brand" href="/" aria-label="Ebank home">
-            <span className="brand-mark">e</span>
-            <span>ebank</span>
-          </a>
+          <div className="welcome-top-row">
+            <a className="brand" href="/" aria-label="Ebank home">
+              <span className="brand-mark">e</span>
+              <span>ebank</span>
+            </a>
+            <DisplayPreferences
+              darkMode={darkMode}
+              largerText={largerText}
+              onToggleDarkMode={() => setDarkMode((enabled) => !enabled)}
+              onToggleLargerText={() => setLargerText((enabled) => !enabled)}
+            />
+          </div>
           <div className="welcome-copy">
             <span className="eyebrow">A calmer kind of banking</span>
             <h1>Your money.<br />Moving with you.</h1>
@@ -712,8 +729,10 @@ function App() {
           <div className="art-caption">A little more clarity.<br />A lot more confidence.</div>
         </aside>
       </main>
-      <button type="button" className="assistant-launcher" onClick={() => setAssistantOpen(true)}>
-        <span aria-hidden="true">✳</span> Ask Ebank assistant
+      <button type="button" className="assistant-launcher"
+        onClick={() => setAssistantOpen((open) => !open)}
+        aria-expanded={assistantOpen} aria-controls="assistant-chat">
+        <AssistantBotIcon /> Ask Ebank assistant
       </button>
       {assistantPanel}
       </>
@@ -765,11 +784,12 @@ function App() {
         <header className="topbar">
           <div className="breadcrumb">My banking <span>/</span> {page === 'profile' ? 'Profile' : page === 'accounts' ? 'Accounts' : page === 'transactions' ? 'Transactions' : page === 'demo' ? 'Demo' : 'Overview'}</div>
           <div className="topbar-right">
-            <button type="button" className="assistant-topbar-button"
-              onClick={() => setAssistantOpen((open) => !open)}
-              aria-expanded={assistantOpen} aria-controls="assistant-chat">
-              <span aria-hidden="true">✳</span> Ask assistant
-            </button>
+            <DisplayPreferences
+              darkMode={darkMode}
+              largerText={largerText}
+              onToggleDarkMode={() => setDarkMode((enabled) => !enabled)}
+              onToggleLargerText={() => setLargerText((enabled) => !enabled)}
+            />
             <div className="account-menu" ref={accountMenuRef}>
               <button
                 className="profile-avatar-button"
@@ -900,14 +920,6 @@ function App() {
               )}
             </section>
 
-            <section className="assistant-card">
-              <div className="assistant-top"><span className="assistant-symbol">✳</span><span className="preview-tag">COMING NEXT</span></div>
-              <span className="eyebrow">YOUR PERSONAL MONEY GUIDE</span>
-              <h2>A little help,<br />right when you need it.</h2>
-              <p>Your Ebank assistant is being built to help you understand spending and find answers, while keeping you in control.</p>
-              <div className="assistant-prompt"><span>✧</span><span>Read-only answers. You approve every action.</span></div>
-              <div className="assistant-disclaimer">AI assistant is not connected yet. No financial actions are available.</div>
-            </section>
           </div>
           <footer className="demo-footer"><span>Balances and activity are loaded from your Ebank database.</span></footer>
             </>
@@ -1063,7 +1075,8 @@ function App() {
                     No transactions found. Account activity will appear here once transactions are recorded.
                   </p>
                 ) : (
-                  <div className="transactions-table-wrapper">
+                  <div className="transactions-table-wrapper" role="region"
+                    aria-label="Scrollable transaction list" tabIndex={0}>
                     <table className="transactions-table">
                       <thead>
                         <tr>
@@ -1232,12 +1245,70 @@ function App() {
           )}
         </div>
       </section>
-      <button type="button" className="assistant-launcher dashboard-assistant-launcher"
-        onClick={() => setAssistantOpen(true)}>
-        <span aria-hidden="true">✳</span> Ask Ebank assistant
+      <button type="button" className="assistant-launcher"
+        onClick={() => setAssistantOpen((open) => !open)}
+        aria-expanded={assistantOpen} aria-controls="assistant-chat">
+        <AssistantBotIcon /> Ask Ebank assistant
       </button>
       {assistantPanel}
     </main>
+  )
+}
+
+type DisplayPreferencesProps = {
+  darkMode: boolean
+  largerText: boolean
+  onToggleDarkMode: () => void
+  onToggleLargerText: () => void
+}
+
+function DisplayPreferences({
+  darkMode,
+  largerText,
+  onToggleDarkMode,
+  onToggleLargerText,
+}: DisplayPreferencesProps) {
+  return (
+    <div className="display-preferences" role="group" aria-label="Display and accessibility">
+      <button type="button" className="display-preference-button"
+        onClick={onToggleDarkMode} aria-pressed={darkMode}
+        aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+        title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
+        <svg aria-hidden="true" viewBox="0 0 20 20" fill="none">
+          {darkMode ? (
+            <path d="M16.3 12.1A7 7 0 0 1 7.9 3.7 7 7 0 1 0 16.3 12.1Z" />
+          ) : (
+            <>
+              <circle cx="10" cy="10" r="3.4" />
+              <path d="M10 1.8v1.5m0 13.4v1.5M1.8 10h1.5m13.4 0h1.5m-14-5.8 1.1 1.1m9.4 9.4 1.1 1.1m0-11.6-1.1 1.1m-9.4 9.4-1.1 1.1" />
+            </>
+          )}
+        </svg>
+      </button>
+      <button type="button" className="display-preference-button text-size-button"
+        onClick={onToggleLargerText} aria-pressed={largerText}
+        aria-label={largerText ? 'Use standard text size' : 'Make text larger'}
+        title={largerText ? 'Use standard text size' : 'Make text larger'}>
+        <span aria-hidden="true">Aa</span>
+        <span className="text-size-plus" aria-hidden="true">{largerText ? '−' : '+'}</span>
+      </button>
+    </div>
+  )
+}
+
+function AssistantBotIcon() {
+  return (
+    <span className="assistant-bot-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M12 4V2.75" />
+        <circle cx="12" cy="2.5" r="1" />
+        <rect x="4" y="6" width="16" height="14" rx="5" />
+        <path d="M4 11H2.75v4H4m16-4h1.25v4H20" />
+        <circle cx="9" cy="12" r="1" />
+        <circle cx="15" cy="12" r="1" />
+        <path d="M9 16h6" />
+      </svg>
+    </span>
   )
 }
 
